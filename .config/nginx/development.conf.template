@@ -1,0 +1,141 @@
+upstream docker-nuxt {
+    server ${NUXT_HOST}:${NUXT_PORT};
+}
+
+upstream docker-mongo-express {
+    server ${ME_HOST}:${ME_PORT};
+}
+
+server {
+    ##
+    # Ports
+    ##
+    
+    listen ${WEB_PORT};
+    listen ${WEB_SSL_PORT};
+
+
+    ##
+    # Basic Settings
+    ##
+
+    charset       UTF-8;
+
+    server_name   ${APP_DOMAIN} www.${APP_DOMAIN};
+    server_tokens off;
+
+    default_type  text/html;
+
+
+    ##
+    # Gzip
+    ##
+
+    gzip on;
+    gzip_disable      "MSIE [1-6]\.";
+    gzip_vary         on;
+    gzip_proxied      expired no-cache no-store private auth;
+    gzip_comp_level   6;
+    gzip_buffers      16 8k;
+    gzip_http_version 1.1;
+    gzip_min_length   1000;
+    gzip_types
+                      application/atom+xml
+                      application/geo+json
+                      application/javascript
+                      application/x-javascript
+                      application/json
+                      application/ld+json
+                      application/manifest+json
+                      application/rdf+xml
+                      application/rss+xml
+                      application/vnd.geo+json
+                      application/vnd.ms-fontobject
+                      application/x-font-ttf
+                      application/x-web-app-manifest+json
+                      application/xhtml+xml
+                      application/xml
+                      font/eot
+                      font/otf
+                      font/ttf
+                      font/opentype
+                      image/bmp
+                      image/svg+xml
+                      image/x-icon
+                      text/cache-manifest
+                      text/css
+                      text/javascript
+                      text/plain
+                      text/xml
+                      text/vcard
+                      text/vnd.rim.location.xloc
+                      text/vtt
+                      text/x-component
+                      text/x-cross-domain-policy;
+    
+
+    ##
+    # Header
+    ##
+
+    etag                               off;
+    expires                            -1;
+    add_header X-Content-Type-Options  "nosniff";
+    add_header X-UA-Compatible         "IE=Edge";
+    add_header X-XSS-Protection        "1; mode=block";
+    add_header Cache-Control           "max-age=0, no-cache, no-store, must-revalidate";
+    add_header Pragma                  "no-cache";
+
+
+    ##
+    # Locations
+    ##
+
+    rewrite ^/(.*) /$1 break;
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location ~ /\.(?!well-known) {
+        deny all;
+    }
+
+    location ${ME_CONFIG_SITE_BASEURL} {
+        access_log                            ${WEB_LOG_DIR}/mongo-express_${APP_ENV}_access.log;
+        error_log                             ${WEB_LOG_DIR}/mongo-express_${APP_ENV}_error.log ${WEB_LOG_LEVEL};
+
+        proxy_redirect                        off;
+        proxy_http_version                    1.1;                         # required
+        proxy_set_header Upgrade              $http_upgrade;               # required
+        proxy_set_header Connection           "upgrade";                   # required
+        proxy_set_header Host                 $host;
+        proxy_set_header X-Real-IP            $remote_addr;
+        proxy_no_cache                        1;
+        proxy_cache_bypass                    1;
+        proxy_pass                            http://docker-mongo-express; # set the address of the Mongo Express instance here
+    }
+
+    location / {
+        access_log                            ${WEB_LOG_DIR}/nuxt_${APP_ENV}_access.log;
+        error_log                             ${WEB_LOG_DIR}/nuxt_${APP_ENV}_error.log ${WEB_LOG_LEVEL};
+
+        proxy_redirect                        off;
+        proxy_http_version                    1.1;                # required
+        proxy_set_header Upgrade              $http_upgrade;      # required
+        proxy_set_header Connection           "upgrade";          # required
+        proxy_set_header Host                 $host;
+        proxy_set_header X-Real-IP            $remote_addr;
+        proxy_set_header X-Forwarded-For      $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto    $scheme;
+        proxy_cache_bypass                    $http_upgrade;
+        proxy_pass                            http://docker-nuxt; # set the address of the Node instance here
+    }
+
+    location /nginx-status {
+        stub_status on;
+        access_log  off;
+        allow       127.0.0.1;
+        deny        all;
+    }
+}

@@ -1,0 +1,202 @@
+upstream docker-nuxt {
+    server ${NUXT_HOST}:${NUXT_PORT};
+}
+
+upstream docker-mongo-express {
+    server ${ME_HOST}:${ME_PORT};
+}
+
+proxy_cache_path ${WEB_CACHE_DIR} levels=1:2 keys_zone=nuxt-cache:25m max_size=1g inactive=60m use_temp_path=off;
+map $sent_http_content_type $expires {
+    "text/html"                1h; # set this to your needs
+    "text/html; charset=utf-8" 1h; # set this to your needs
+    default                    7d; # set this to your needs
+}
+
+server {
+    ##
+    # Ports
+    ##
+    
+    listen ${WEB_PORT};
+    listen ${WEB_SSL_PORT} ssl;
+
+
+    ##
+    # Basic Settings
+    ##
+
+    charset       UTF-8;
+
+    server_name   ${APP_DOMAIN} www.${APP_DOMAIN};
+    server_tokens off;
+
+    root          ${WEB_ROOT_DIR}/public;
+
+    index         index.html index.htm;
+    default_type  text/html;
+
+
+    ##
+    # SSL
+    ##
+
+    # This is a cache for SSL connections
+    ssl_certificate     ${WEB_CERT_DIR}/https-proxy-cert.cert;
+    ssl_certificate_key ${WEB_CERT_DIR}/https-proxy-cert.key;
+    ssl_protocols       SSLv3 TLSv1;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:le_nginx_SSL:1m;
+    ssl_session_timeout 1440m;
+
+
+    ##
+    # Gzip
+    ##
+
+    gzip on;
+    gzip_disable      "MSIE [1-6]\.";
+    gzip_vary         on;
+    gzip_proxied      expired no-cache no-store private auth;
+    gzip_comp_level   6;
+    gzip_buffers      16 8k;
+    gzip_http_version 1.1;
+    gzip_min_length   1000;
+    gzip_types
+                      application/atom+xml
+                      application/geo+json
+                      application/javascript
+                      application/x-javascript
+                      application/json
+                      application/ld+json
+                      application/manifest+json
+                      application/rdf+xml
+                      application/rss+xml
+                      application/xhtml+xml
+                      application/xml
+                      font/eot
+                      font/otf
+                      font/ttf
+                      image/svg+xml
+                      text/css
+                      text/javascript
+                      text/plain
+                      text/xml;
+    
+
+    ##
+    # Header
+    ##
+
+    etag                               off;
+    add_header X-Content-Type-Options  "nosniff";
+    add_header X-UA-Compatible         "IE=Edge";
+    add_header X-XSS-Protection        "1; mode=block";
+
+
+    ##
+    # Locations
+    ##
+
+    rewrite ^/(.*) /$1 break;
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location ~ /\.(?!well-known) {
+        deny all;
+    }
+
+    location ${ME_CONFIG_SITE_BASEURL} {
+        access_log                         off;
+        error_log                          ${WEB_LOG_DIR}/mongo-express_${APP_ENV}_error.log ${WEB_LOG_LEVEL};
+
+        add_header Cache-Control           "max-age=0, no-cache, no-store, must-revalidate";
+        add_header Pragma                  "no-cache";
+
+        proxy_redirect                     off;
+        proxy_http_version                 1.1;                         # required
+        proxy_set_header Upgrade           $http_upgrade;               # required
+        proxy_set_header Connection        "upgrade";                   # required
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_no_cache                     1;
+        proxy_cache_bypass                 1;
+        proxy_pass                         http://docker-mongo-express; # set the address of the Mongo Express instance here
+    }
+
+    location /\.(?:ico|gif|jpe?g|png|woff2?|eot|otf|ttf|svg|js|css)$ {
+        expires                  $expires;
+        add_header Pragma        "public";
+        add_header Cache-Control "public";
+
+        try_files                $uri $uri/ @proxy;
+    }
+
+    location / {
+        access_log                           off;
+        error_log                            ${WEB_LOG_DIR}/nuxt_${APP_ENV}_error.log ${WEB_LOG_LEVEL};
+
+        expires                              $expires;
+        add_header Content-Security-Policy   "default-src 'self' 'unsafe-inline'; img-src 'self' 'unsafe-inline' https: data:;";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+        add_header X-Frame-Options           "SAMEORIGIN";
+
+        try_files                            $uri $uri/index.html @proxy; # for generate.subFolders: true
+        # try_files                            $uri $uri.html @proxy;       # for generate.subFolders: false
+    }
+
+    location @proxy {
+        error_page 401                              /401.html;
+        error_page 403                              /403.html;
+        error_page 404                              /404.html;
+        error_page 500                              /500.html;
+        error_page 502                              /502.html;
+        error_page 503                              /503.html;
+        error_page 504                              /504.html;
+
+        proxy_cookie_path /                         "/; secure; HttpOnly; SameSite=none";
+        add_header Access-Control-Allow-Origin      "localhost; $http_origin; docker-nuxt;";
+        add_header Access-Control-Max-Age           "3600";
+        add_header Access-Control-Allow-Credentials "true";
+        add_header Access-Control-Allow-Headers     "Content-Type";
+        add_header Referrer-Policy                  "no-referrer-when-downgrade" always;
+        add_header Feature-Policy                   "accelerometer 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'self'; usb 'none'";
+        add_header Content-Security-Policy          "default-src 'self' 'unsafe-inline' https:; img-src 'self' https: data: blob:;";
+        add_header Cache-Control                    "public, max-age=31536000";
+        add_header X-Cache-Status                   $upstream_cache_status;
+
+        proxy_redirect                              off;
+        proxy_http_version                          1.1;                # required
+        proxy_set_header Upgrade                    $http_upgrade;      # required
+        proxy_set_header Connection                 "upgrade";          # required
+        proxy_set_header Host                       $host;
+        proxy_set_header X-Real-IP                  $remote_addr;
+        proxy_set_header X-Forwarded-For            $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto          $scheme;
+        proxy_ignore_headers                        Cache-Control;
+        proxy_read_timeout	                        1m;
+        proxy_connect_timeout                       1m;
+        proxy_send_timeout                          1m;
+        proxy_cache                                 nuxt-cache;
+        proxy_cache_bypass                          $http_upgrade;
+        proxy_cache_valid                           200 302  60m;       # set this to your needs
+        proxy_cache_valid                           404      1m;        # set this to your needs
+        proxy_cache_background_update               on;
+        proxy_cache_lock                            on;
+        proxy_cache_revalidate                      on;
+        proxy_cache_min_uses                        3;
+        proxy_cache_use_stale                       error timeout updating http_500 http_502 http_503 http_504;
+        proxy_next_upstream                         error timeout invalid_header http_500 http_502 http_503 http_504 http_404;
+        proxy_cache_key                             $uri$is_args$args;        
+        proxy_pass                                  http://docker-nuxt; # set the address of the Node instance here
+    }
+
+    location /nginx-status {
+        stub_status on;
+        access_log  off;
+        allow       127.0.0.1;
+        deny        all;
+    }
+}

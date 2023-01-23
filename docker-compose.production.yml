@@ -1,0 +1,13 @@
+version: '3.3'
+
+services:
+
+    # Webserver
+    nginx:
+        environment:
+            WEB_CACHE_DIR: ${WEB_CACHE_DIR}
+            WEB_CERT_DIR: ${WEB_CERT_DIR}
+        volumes:
+            - ./.config/nginx/https-proxy-cert.cert:${WEB_CERT_DIR}/https-proxy-cert.cert:ro
+            - ./.config/nginx/https-proxy-cert.key:${WEB_CERT_DIR}/https-proxy-cert.key:ro
+            - ./nuxt/.output:${WEB_ROOT_DIR}:ro
