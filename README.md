@@ -72,4 +72,4 @@
   * Set `APP_ENV=production` in `.env` and run `docker-restart.sh`.
 
 ## License
-This project is licensed under the Apache-2.0 license, Copyright 2023 CINID. For more information see the [LICENSE](LICENSE.md) file.
+This project is licensed under the Apache-2.0 license, Copyright 2023 CINID. For more information see the [LICENSE](LICENSE) file.
